@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Showcasing how POST room, kiosk, and map
 
-## Getting Started
-
-First, run the development server:
-
+## Note
+Before you begin, please clone the project
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/Cheasbite/Integration-map.git
+```
+Then run
+```bash
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Now you should be able to run the project which then please go to /dashboard
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+PS: The code is bad, please look away
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## On room and kiosk
+[!Local Image][./public/screenshot/Rooms.png]
+[!Local Image][./public/screenshot/Kiosks.png]
 
-## Learn More
+- Blue identifies the existing rooms on that floor
+- Green identifies the existing kiosks on that floor
+- Red is the selected coords to submit the back-end (posX, posY aka verticies too but Claude says its unecessary)
 
-To learn more about Next.js, take a look at the following resources:
+So the goal in rooms is to:
+- View existing rooms
+- Add a new rooms
+- When adding a new rooms, select the "verticies" in the map already
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Same can be said with kiosk
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Map
+Update soon!
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
