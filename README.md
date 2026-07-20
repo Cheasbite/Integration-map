@@ -15,8 +15,8 @@ Now you should be able to run the project which then please go to /dashboard
 PS: The code is bad, please look away
 
 ## On room and kiosk
-[!Local Image][./public/screenshot/Rooms.png]
-[!Local Image][./public/screenshot/Kiosks.png]
+[!Local Image](./public/screenshot/Rooms.png)
+[!Local Image](./public/screenshot/Kiosks.png)
 
 - Blue identifies the existing rooms on that floor
 - Green identifies the existing kiosks on that floor
