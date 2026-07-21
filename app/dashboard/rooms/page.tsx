@@ -12,14 +12,14 @@ const DRAG_THRESHOLD = 5;
 // you POSTed your two floors earlier (check the curl response bodies).
 const FLOORS = [
   {
-    id: "019f7ffc-fa35-765c-ae37-7774269d8f91",
+    id: "019f8251-57ac-7549-b47a-e093c166ef84",
     name: "Ground Floor",
     mapSrc: "/map1.svg",
     width: 500,
     height: 500,
   },
   {
-    id: "019f7ffd-9312-721f-9734-092ecf686ffd",
+    id: "019f8251-e601-74e5-9033-17c3f54ddef1",
     name: "First Floor",
     mapSrc: "/map2.svg",
     width: 500,
