@@ -31,52 +31,57 @@ So the goal in rooms is to:
 ### Same can be said with kiosk
 
 ## Map
-![Map Dashboard](./public/screenshot/Map.png)
+![Map Dashboard](./public/screenshot/NewMap.png)
 ![Adding a new floor](./public/screenshot/Floor.png)
+![Path Finding Start](./public/screenshot/Finding-A.png)
+![Path Finding End](./public/screenshot/Finding-B.png)
+![New Connect groups](./public/screenshot/Connect-Groups.png)
 
 ### Exclusive to Map Dashboard only
 - Able to see the connected nodes (drawn with purple line)
 - Able to see the cross referenced nodes (teleporters), black circled
 - Add new floors
+- Able to see and find the best path
 
 ### The main goal in Map Dashboard
 - Create new floor
 - Connect nodes
 - Create Teleporters
 
-## Notice
-This is just a showcase of my idea with tweaks for the database, I'm sharing that in the video.
-It's not a replacement of the previous idea but this one should be done instead to allow us to efficiently
-integrate with our current project without massive changes.
-
-- This lacks the logic that show the ideal path from one node to another
-- This lacks the button to show the ideal path
-- This lacks the logic to check if the placement is directly on top of another
-- No side view to allow user to see what is being connected
-- No information view that tells the node properties
+> [!Note]
+> This is just a showcase of my idea with tweaks for the database, I'm sharing that in the video.
+> It's not a replacement of the previous idea but this one should be done instead to allow us to efficiently
+> integrate with our current project without massive changes.
+>
+> - This lacks the logic that show the ideal path from one node to another
+> - This lacks the button to show the ideal path
+> - This lacks the logic to check if the placement is directly on top of another
+> - No side view to allow user to see what is being connected
+> - No information view that tells the node properties
 
 ### What this likely propose:
 - No building table
 - The verticies will be change to position coords because we need to know the exact placement of the objects
-- 2 new tables, Node table and Edge table where the Node Table is responsible for giving out the information of the objects
+- 3 new tables, Node table, teleporters table and Edge table where the Node Table is responsible for giving out the information of the objects
 and Edge table to handle the connected verticies in the floor and teleporters
 - Now to sending things in the database would become a transaction of 2 database (A handshake between node table and another table)
 else both will fail
 
-### Side Effects:
-- Since we are introducing 2 new tables (node and edge) where node shall store the positions of kiosk and room,
-this would mean that room and kiosk positions will be redundant therefore it will be removed alongside the its referenced to the floorId
-(removed floorId referenced, posX, posY, and the kiosk or room id will exactly matched node Id [eg. if room id is 01e then node id would also be 01e])
-- We are adding new database which means we have to migrate our previous values and add it back with drizzle (Not sure how hard the process will be yet)
-and do a drizzle push to update it in neon. (Note: we should do it inside of neon first without affecting our main database!)
-- We no longer store positions in a "{100}x{200}" manner and separate things entirely with a dedicated row for each of these values
-(It is optional though and keeping it is also wise since it won't break our split logic too much on the front-end)
-
-### Positives:
-- We can still fetch and post normally despite posX, posY, floorId beeing removed in certain places. Just POST like how we used too and
-it will perfectly put the necessary stuff in the database though the back-end has to make the transaction clear in route.ts
-- We retain most of our front-end without massive overhaul changes but the back-end will have to implement small necessary steps such as
-new database (Node Table and Edge Table) with relations defined and each route.ts has to implement the transaction correctly.
+> [!Important]
+> - Side Effects
+>   - Since we are introducing 3 new tables (node, teleporters and edge) where node shall store the positions of kiosk and room,
+>   this would mean that room and kiosk positions will be redundant therefore it will be removed alongside the its referenced to the floorId
+>   (removed floorId referenced, posX, posY, and the kiosk or room id will exactly matched node Id [eg. if room id is 01e then node id would also be 01e])
+>   - We are adding new database which means we have to migrate our previous values and add it back with drizzle (Not sure how hard the process will be yet)
+>   and do a drizzle push to update it in neon. (Note: we should do it inside of neon first without affecting our main database!)
+>   - We no longer store positions in a "{100}x{200}" manner and separate things entirely with a dedicated row for each of these values
+>   (It is optional though and keeping it is also wise since it won't break our split logic too much on the front-end)
+>
+> - Positives
+>   - We can still fetch and post normally despite posX, posY, floorId beeing removed in certain places. Just POST like how we used too and
+>   it will perfectly put the necessary stuff in the database though the back-end has to make the transaction clear in route.ts
+>   - We retain most of our front-end without massive overhaul changes but the back-end will have to implement small necessary steps such as
+>   new database (Node Table and Edge Table) with relations defined and each route.ts has to implement the transaction correctly.
 
 ### Technicals:
 Below is how the back-end is expected to do in those route.ts
@@ -144,4 +149,8 @@ So the front-end response would be the same as our previous:
     }
 }
 ```
+
+> [!Note]
+> I would suggest when we implement this in out project, we should put anything that isn't related to our
+> dashboard into /api/map/* such as nodes, edges, path and teleporters in this case
 
