@@ -70,6 +70,69 @@ export default function MapPage() {
   const [showAddFloor, setShowAddFloor] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [startFloorId, setStartFloorId] = useState("");
+  const [startNodeId, setStartNodeId] = useState("");
+  const [endFloorId, setEndFloorId] = useState("");
+  const [endNodeId, setEndNodeId] = useState("");
+  const [pathResult, setPathResult] = useState<NodeRow[] | null>(null);
+  const [pathLoading, setPathLoading] = useState(false);
+
+  // Every node across every floor, flattened — used to resolve a bare
+  // {id, px, py, floorId} from /api/path back into a full NodeRow with
+  // its room/kiosk name, since /api/path itself only returns the fields
+  // pathfinding.ts needs, not display details.
+  const allLoadedNodes = useMemo(() => floors.flatMap((f) => f.nodes), [floors]);
+
+  const startFloorNodes = floors.find((f) => f.id === startFloorId)?.nodes ?? [];
+  const endFloorNodes = floors.find((f) => f.id === endFloorId)?.nodes ?? [];
+
+  const handleFindPath = async () => {
+    if (!startNodeId || !endNodeId) return;
+    setPathLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/path?from=${startNodeId}&to=${endNodeId}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "No path found");
+
+      // Resolve each bare path node back to its full NodeRow so we get
+      // room/kiosk names for the route summary in the side panel.
+      const resolved: NodeRow[] = body.data.path.map(
+        (n: { id: string }) => allLoadedNodes.find((full) => full.id === n.id)!
+      );
+      setPathResult(resolved);
+    } catch (err) {
+      setPathResult(null);
+      setError(err instanceof Error ? err.message : "Failed to find path");
+    } finally {
+      setPathLoading(false);
+    }
+  };
+
+  const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
+
+  // Only consecutive path nodes that are BOTH on the currently displayed
+  // floor get drawn — a floor crossing (different floorId on either
+  // side) has no meaningful line to draw here, since px/py on two
+  // different floors aren't the same coordinate space.
+  const pathSegmentsForFloor = useMemo(() => {
+    if (!pathResult || !selectedFloor) return [];
+    const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (let i = 0; i < pathResult.length - 1; i++) {
+      const a = pathResult[i];
+      const b = pathResult[i + 1];
+      if (a.floorId === selectedFloorId && b.floorId === selectedFloorId) {
+        segments.push({ x1: a.px, y1: a.py, x2: b.px, y2: b.py });
+      }
+    }
+    return segments;
+  }, [pathResult, selectedFloorId]);
+
+  const pathNodeIds = useMemo(
+    () => new Set((pathResult ?? []).map((n) => n.id)),
+    [pathResult]
+  );
+
   // Floors come from a real fetch now (not hardcoded) so a floor added
   // through the modal shows up in the dropdown immediately.
   const loadAll = async () => {
@@ -97,8 +160,6 @@ export default function MapPage() {
   useEffect(() => {
     loadAll();
   }, []);
-
-  const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
 
   // Same-floor edges only — these are the ones drawn as purple lines.
   // This is the only place in the whole app that renders edge lines,
@@ -403,6 +464,63 @@ export default function MapPage() {
           </div>
         )}
 
+        <div className="flex flex-col gap-2 border rounded p-2">
+          <p className="text-sm font-medium">Find route</p>
+
+          <select
+            value={startFloorId}
+            onChange={(e) => { setStartFloorId(e.target.value); setStartNodeId(""); }}
+            className="border rounded px-2 py-1 text-sm"
+          >
+            <option value="">Start floor…</option>
+            {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <select
+            value={startNodeId}
+            onChange={(e) => setStartNodeId(e.target.value)}
+            disabled={!startFloorId}
+            className="border rounded px-2 py-1 text-sm disabled:opacity-50"
+          >
+            <option value="">Start location…</option>
+            {startFloorNodes.map((n) => <option key={n.id} value={n.id}>{nodeName(n)}</option>)}
+          </select>
+
+          <select
+            value={endFloorId}
+            onChange={(e) => { setEndFloorId(e.target.value); setEndNodeId(""); }}
+            className="border rounded px-2 py-1 text-sm"
+          >
+            <option value="">End floor…</option>
+            {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <select
+            value={endNodeId}
+            onChange={(e) => setEndNodeId(e.target.value)}
+            disabled={!endFloorId}
+            className="border rounded px-2 py-1 text-sm disabled:opacity-50"
+          >
+            <option value="">End location…</option>
+            {endFloorNodes.map((n) => <option key={n.id} value={n.id}>{nodeName(n)}</option>)}
+          </select>
+
+          <button
+            onClick={handleFindPath}
+            disabled={!startNodeId || !endNodeId || pathLoading}
+            className="bg-black text-white rounded px-2 py-1 text-sm disabled:opacity-50"
+          >
+            {pathLoading ? "Finding…" : "Find Path"}
+          </button>
+
+          {pathResult && (
+            <button
+              onClick={() => setPathResult(null)}
+              className="border rounded px-2 py-1 text-sm"
+            >
+              Clear route
+            </button>
+          )}
+        </div>
+
         <button
           onClick={() => setShowAddFloor(true)}
           className="flex items-center justify-center gap-1 border rounded px-2 py-1 text-sm"
@@ -460,6 +578,23 @@ export default function MapPage() {
               ))}
             </svg>
 
+            {pathSegmentsForFloor.length > 0 && (
+              <svg
+                viewBox={`0 0 ${selectedFloor.width} ${selectedFloor.height}`}
+                className="absolute inset-0 w-full h-full pointer-events-none"
+              >
+                {pathSegmentsForFloor.map((seg, i) => (
+                  <line
+                    key={i}
+                    x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                    stroke="#22c55e"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                  />
+                ))}
+              </svg>
+            )}
+
             {selectedFloor.nodes.map((node) => {
               const isTeleporter = teleporterNodeIds.has(node.id);
               const isPending = pendingNodeId === node.id;
@@ -475,7 +610,8 @@ export default function MapPage() {
                   title={nodeName(node)}
                   className={`absolute z-10 p-0.5 rounded-full ${NODE_COLORS[node.type]} ${
                     isTeleporter ? "border-2 border-black" : ""
-                  } ${isPending ? "ring-2 ring-offset-1 ring-red-500" : ""}`}
+                  } ${isPending ? "ring-2 ring-offset-1 ring-red-500" : ""}
+                    ${pathNodeIds.has(node.id) ? "ring-2 ring-offset-1 ring-green-500" : ""}`}
                   style={{
                     left: `${(node.px / selectedFloor.width) * 100}%`,
                     top: `${(node.py / selectedFloor.height) * 100}%`,
@@ -567,6 +703,23 @@ export default function MapPage() {
             loadAll();
           }}
         />
+      )}
+
+      {pathResult && (
+        <div>
+          <p className="text-sm font-medium mb-1">Route</p>
+          <ol className="flex flex-col gap-1 text-xs">
+            {pathResult.map((n, i) => {
+              const floor = floors.find((f) => f.id === n.floorId);
+              const crossedFloor = i > 0 && pathResult[i - 1].floorId !== n.floorId;
+              return (
+                <li key={n.id} className={crossedFloor ? "border-t pt-1 mt-1" : ""}>
+                  {i + 1}. {nodeName(n)} <span className="text-gray-400">({floor?.name})</span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       )}
     </div>
   );
