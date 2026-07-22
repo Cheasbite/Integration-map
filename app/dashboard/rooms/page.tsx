@@ -7,34 +7,13 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
 const DRAG_THRESHOLD = 5;
 
-// Hardcoded for the demo — swap this for a fetch("/api/floors") call later.
-// IMPORTANT: replace these ids with the real uuids Postgres returned when
-// you POSTed your two floors earlier (check the curl response bodies).
-const FLOORS = [
-  {
-    id: "019f8251-57ac-7549-b47a-e093c166ef84",
-    name: "Ground Floor",
-    mapSrc: "/map1.svg",
-    width: 500,
-    height: 500,
-  },
-  {
-    id: "019f8251-e601-74e5-9033-17c3f54ddef1",
-    name: "First Floor",
-    mapSrc: "/map2.svg",
-    width: 500,
-    height: 500,
-  },
-  // Third floor: once you POST it via /api/floors, add one more entry
-  // here — nothing else in this file needs to change.
-  {
-    id: "019f8258-3ca5-726a-a180-0ff30e4fe02f",
-    name: "Third Floor",
-    mapSrc: "/map3.svg",
-    width: 500,
-    height: 500,
-  },
-] as const;
+interface FloorRow {
+  id: string;
+  name: string;
+  mapData: string;
+  width: number;
+  height: number;
+}
 
 interface PinPercent {
   xPct: number;
@@ -220,6 +199,22 @@ export default function AddRoomForm() {
   const [existingNodes, setExistingNodes] = useState<ExistingNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
+  const [FLOORS, SETFLOORS] = useState<FloorRow[] | []>([]);
+
+  const fetchFloor = async () => {
+    try {
+      const [getFloor] = await Promise.all([fetch("/api/floors")])
+      const body = await getFloor.json()
+      SETFLOORS(body.data ?? [])
+    } catch {
+      console.log("Failed to fetch floor")
+    }
+  }
+
+  useEffect(() => {
+    fetchFloor()
+  }, [])
+
   const selectedFloor = FLOORS.find((f) => f.id === floorId) ?? null;
 
   // Pull the floor's existing rooms/kiosks so the picker can show them
@@ -329,7 +324,7 @@ export default function AddRoomForm() {
             {loadingNodes && <span className="text-gray-400"> (loading existing…)</span>}
           </p>
           <FloorMapPicker
-            mapSrc={selectedFloor.mapSrc}
+            mapSrc={selectedFloor.mapData}
             width={selectedFloor.width}
             height={selectedFloor.height}
             existingNodes={existingNodes}
