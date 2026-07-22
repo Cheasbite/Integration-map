@@ -27,6 +27,13 @@ const FLOORS = [
   },
   // Third floor: once you POST it via /api/floors, add one more entry
   // here — nothing else in this file needs to change.
+  {
+    id: "019f8258-3ca5-726a-a180-0ff30e4fe02f",
+    name: "Third Floor",
+    mapSrc: "/map3.svg",
+    width: 500,
+    height: 500,
+  },
 ] as const;
 
 interface PinPercent {

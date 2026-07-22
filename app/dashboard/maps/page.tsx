@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { MapPin, Plus, X } from "lucide-react";
 
-type NodeType = "room" | "kiosk";
+type NodeType = "room" | "kiosk" | "waypoint";
 
 interface NodeRow {
   id: string;
@@ -33,16 +33,19 @@ interface EdgeRow {
   toNode: NodeRow;
 }
 
-type Mode = "view" | "connect-nodes" | "connect-groups";
+type Mode = "view" | "connect-nodes" | "connect-groups" | "add-waypoint";
 
 function nodeName(node: NodeRow) {
-  return node.room?.name ?? node.kiosk?.name ?? "Unnamed";
+  return node.room?.name ?? node.kiosk?.name ?? "Waypoint";
 }
 
-// pin color per node type
+// pin color per node type. Waypoints are deliberately dim/neutral —
+// they're corridor corners, not places, so they shouldn't compete
+// visually with actual rooms/kiosks.
 const NODE_COLORS: Record<NodeType, string> = {
   room: "text-blue-500",
   kiosk: "text-emerald-500",
+  waypoint: "text-gray-400",
 };
 
 export default function MapPage() {
@@ -152,7 +155,7 @@ export default function MapPage() {
   };
 
   const handlePinClick = (node: NodeRow) => {
-    if (mode === "view") return;
+    if (mode === "view" || mode === "add-waypoint") return;
 
     if (mode === "connect-nodes") {
       if (!pendingNodeId) {
@@ -160,11 +163,15 @@ export default function MapPage() {
         return;
       }
       if (pendingNodeId === node.id) {
-        setPendingNodeId(null); // clicked the same pin again — cancel
+        setPendingNodeId(null); // clicked the same pin again — end the chain
         return;
       }
+      // Create the edge, then keep the just-clicked node as the new
+      // pending node. This is what lets a sequence of clicks lay down
+      // a whole corridor (Room -> Waypoint -> Waypoint -> Room) instead
+      // of only ever connecting one pair before you have to restart.
       createEdge(pendingNodeId, node.id);
-      setPendingNodeId(null);
+      setPendingNodeId(node.id);
       return;
     }
 
@@ -172,6 +179,39 @@ export default function MapPage() {
       // Source is picked on the map; the target floor isn't rendered
       // here, so its node is picked via the dropdowns below instead.
       setPendingNodeId(node.id);
+    }
+  };
+
+  // Only fires in "add-waypoint" mode, and only for clicks that land on
+  // the map background — pins call stopPropagation so a click meant to
+  // select a pin never accidentally drops a waypoint underneath it.
+  const handleMapBackgroundClick = async (
+    event: React.MouseEvent<HTMLDivElement>
+  ) => {
+    if (mode !== "add-waypoint" || !selectedFloor) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const pctX = ((event.clientX - rect.left) / rect.width) * 100;
+    const pctY = ((event.clientY - rect.top) / rect.height) * 100;
+    const px = (pctX / 100) * selectedFloor.width;
+    const py = (pctY / 100) * selectedFloor.height;
+
+    setError(null);
+    try {
+      const res = await fetch("/api/nodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ floorId: selectedFloor.id, px, py }),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(
+          body.error?.formErrors?.join(", ") ?? "Failed to place waypoint"
+        );
+      }
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
@@ -221,14 +261,22 @@ export default function MapPage() {
             <option value="view">View</option>
             <option value="connect-nodes">Connect Nodes</option>
             <option value="connect-groups">Connect Groups (teleporter)</option>
+            <option value="add-waypoint">Add Waypoint</option>
           </select>
         </div>
 
         {mode === "connect-nodes" && (
           <p className="text-xs text-gray-500">
             {pendingNodeId
-              ? "Click a second pin to connect it."
+              ? "Click the next pin to continue the chain, or click the highlighted pin again to stop."
               : "Click a pin to start a connection."}
+          </p>
+        )}
+
+        {mode === "add-waypoint" && (
+          <p className="text-xs text-gray-500">
+            Click anywhere on the map to drop a waypoint — a corridor
+            corner with no name, used to bend a connection around walls.
           </p>
         )}
 
@@ -300,7 +348,12 @@ export default function MapPage() {
         ) : (
           <div
             className="relative"
-            style={{ width: selectedFloor.width, height: selectedFloor.height }}
+            style={{
+              width: selectedFloor.width,
+              height: selectedFloor.height,
+              cursor: mode === "add-waypoint" ? "crosshair" : "default",
+            }}
+            onClick={handleMapBackgroundClick}
           >
             {selectedFloor.mapData && (
               <Image
@@ -340,7 +393,11 @@ export default function MapPage() {
                 <button
                   key={node.id}
                   type="button"
-                  onClick={() => handlePinClick(node)}
+                  onClick={(e) => {
+                    e.stopPropagation(); // don't let this bubble to the
+                    // background handler and drop a waypoint under the pin
+                    handlePinClick(node);
+                  }}
                   title={nodeName(node)}
                   className={`absolute z-10 p-0.5 rounded-full ${NODE_COLORS[node.type]} ${
                     isTeleporter ? "border-2 border-black" : ""

@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, integer, real, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-export const nodeTypeEnum = pgEnum("node_type", ["room", "kiosk"]);
+export const nodeTypeEnum = pgEnum("node_type", ["room", "kiosk", "waypoint"]);
 
 export const floorsTable = pgTable("floors", {
   id: uuid("id").defaultRandom().primaryKey(),
