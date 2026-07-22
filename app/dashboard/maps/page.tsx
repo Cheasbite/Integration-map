@@ -4,6 +4,7 @@ import Image from "next/image";
 import { MapPin, Plus, X } from "lucide-react";
 
 type NodeType = "room" | "kiosk" | "waypoint";
+type TeleporterType = "staircase" | "elevator" | "others";
 
 interface NodeRow {
   id: string;
@@ -33,6 +34,13 @@ interface EdgeRow {
   toNode: NodeRow;
 }
 
+interface TeleporterRow {
+  id: string;
+  name: string;
+  type: TeleporterType;
+  stops: NodeRow[];
+}
+
 type Mode = "view" | "connect-nodes" | "connect-groups" | "add-waypoint";
 
 function nodeName(node: NodeRow) {
@@ -51,6 +59,7 @@ const NODE_COLORS: Record<NodeType, string> = {
 export default function MapPage() {
   const [floors, setFloors] = useState<FloorRow[]>([]);
   const [edges, setEdges] = useState<EdgeRow[]>([]);
+  const [teleporters, setTeleporters] = useState<TeleporterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFloorId, setSelectedFloorId] = useState("");
   const [mode, setMode] = useState<Mode>("view");
@@ -65,14 +74,17 @@ export default function MapPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [floorsRes, edgesRes] = await Promise.all([
+      const [floorsRes, edgesRes, teleporterRes] = await Promise.all([
         fetch("/api/floors"),
         fetch("/api/edges"),
+        fetch("/api/teleporters")
       ]);
       const floorsBody = await floorsRes.json();
       const edgesBody = await edgesRes.json();
+      const teleportersBody = await teleporterRes.json()
       setFloors(floorsBody.data ?? []);
       setEdges(edgesBody.data ?? []);
+      setTeleporters(teleportersBody.data ?? []);
     } catch (err) {
       console.error(err);
       setError("Failed to load map data");
@@ -86,20 +98,6 @@ export default function MapPage() {
   }, []);
 
   const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
-
-  // A "teleporter" isn't stored anywhere — it's just any edge whose two
-  // endpoints sit on different floors. This filters to ones touching
-  // the currently selected floor, for the right-hand info panel.
-  const teleporterEdges = useMemo(
-    () =>
-      edges.filter(
-        (e) =>
-          e.fromNode.floorId !== e.toNode.floorId &&
-          (e.fromNode.floorId === selectedFloorId ||
-            e.toNode.floorId === selectedFloorId)
-      ),
-    [edges, selectedFloorId]
-  );
 
   // Same-floor edges only — these are the ones drawn as purple lines.
   // This is the only place in the whole app that renders edge lines,
@@ -117,14 +115,11 @@ export default function MapPage() {
   // Any node touching a cross-floor edge gets the black border.
   const teleporterNodeIds = useMemo(() => {
     const ids = new Set<string>();
-    edges.forEach((e) => {
-      if (e.fromNode.floorId !== e.toNode.floorId) {
-        ids.add(e.fromNodeId);
-        ids.add(e.toNodeId);
-      }
+    teleporters.forEach((group) => {
+      group.stops.forEach((n) => ids.add(n.id));
     });
     return ids;
-  }, [edges]);
+  }, [teleporters]);
 
   const handleFloorChange = (id: string) => {
     setSelectedFloorId(id);
@@ -215,12 +210,59 @@ export default function MapPage() {
     }
   };
 
-  const handleCreateTeleporter = () => {
+  const [teleporterName, setTeleporterName] = useState("");
+  const [teleporterType, setTeleporterType] = useState<"elevator" | "staircase" | "others">("elevator");
+  const [existingGroupId, setExistingGroupId] = useState(""); // "" = create new
+
+  const handleCreateTeleporter = async () => {
     if (!pendingNodeId || !groupTargetNodeId) return;
-    createEdge(pendingNodeId, groupTargetNodeId);
-    setPendingNodeId(null);
-    setGroupTargetFloorId("");
-    setGroupTargetNodeId("");
+    setError(null);
+
+    try {
+      if (existingGroupId) {
+        // Adding a stop to an elevator/staircase that already exists —
+        // both the source and target nodes join that group.
+        await Promise.all([
+          fetch(`/api/teleporters/${existingGroupId}/nodes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodeId: pendingNodeId }),
+          }),
+          fetch(`/api/teleporters/${existingGroupId}/nodes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodeId: groupTargetNodeId }),
+          }),
+        ]);
+      } else {
+        if (!teleporterName.trim()) {
+          setError("Name the teleporter (e.g. 'Elevator A').");
+          return;
+        }
+        const res = await fetch("/api/teleporters", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: teleporterName,
+            type: teleporterType,
+            nodeIds: [pendingNodeId, groupTargetNodeId],
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json();
+          throw new Error(body.error?.formErrors?.join(", ") ?? "Failed to create teleporter");
+        }
+      }
+
+      await loadAll();
+      setPendingNodeId(null);
+      setGroupTargetFloorId("");
+      setGroupTargetNodeId("");
+      setTeleporterName("");
+      setExistingGroupId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
   };
 
   const otherFloors = floors.filter((f) => f.id !== selectedFloorId);
@@ -289,6 +331,8 @@ export default function MapPage() {
             </p>
             {pendingNodeId && (
               <>
+                {/* Step 1: pick the destination — a node on a DIFFERENT floor,
+                    since that floor isn't rendered here for you to click into. */}
                 <select
                   value={groupTargetFloorId}
                   onChange={(e) => {
@@ -299,9 +343,7 @@ export default function MapPage() {
                 >
                   <option value="">Target floor…</option>
                   {otherFloors.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
+                    <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
                 </select>
                 <select
@@ -312,11 +354,42 @@ export default function MapPage() {
                 >
                   <option value="">Target node…</option>
                   {targetFloorNodes.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {nodeName(n)}
-                    </option>
+                    <option key={n.id} value={n.id}>{nodeName(n)}</option>
                   ))}
                 </select>
+
+                {/* Step 2: pick or create the named group this hop belongs to */}
+                <select
+                  value={existingGroupId}
+                  onChange={(e) => setExistingGroupId(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm"
+                >
+                  <option value="">+ Create new teleporter</option>
+                  {teleporters.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+
+                {!existingGroupId && (
+                  <>
+                    <input
+                      value={teleporterName}
+                      onChange={(e) => setTeleporterName(e.target.value)}
+                      placeholder="Stair A"
+                      className="border rounded px-2 py-1 text-sm"
+                    />
+                    <select
+                      value={teleporterType}
+                      onChange={(e) => setTeleporterType(e.target.value as any)}
+                      className="border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="elevator">Elevator</option>
+                      <option value="staircase">Staircase</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </>
+                )}
+
                 <button
                   onClick={handleCreateTeleporter}
                   disabled={!groupTargetNodeId}
@@ -441,24 +514,45 @@ export default function MapPage() {
 
             <div>
               <p className="text-sm font-medium mb-1">Teleporter group</p>
-              {teleporterEdges.length === 0 ? (
-                <p className="text-xs text-gray-500">No cross-floor connections yet.</p>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {teleporterEdges.map((e) => {
-                    const isFromHere = e.fromNode.floorId === selectedFloorId;
-                    const localNode = isFromHere ? e.fromNode : e.toNode;
-                    const remoteNode = isFromHere ? e.toNode : e.fromNode;
-                    const remoteFloor = floors.find((f) => f.id === remoteNode.floorId);
-                    return (
-                      <li key={e.id} className="text-xs border-l-2 border-black pl-2">
-                        {nodeName(localNode)} → {nodeName(remoteNode)}
-                        {remoteFloor ? ` (${remoteFloor.name})` : ""}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+              {(() => {
+                // Groups that have at least one stop on this floor.
+                const relevantGroups = teleporters.filter((g) =>
+                  g.stops.some((n) => n.floorId === selectedFloorId)
+                );
+
+                if (relevantGroups.length === 0) {
+                  return <p className="text-xs text-gray-500">No teleporters on this floor yet.</p>;
+                }
+
+                return (
+                  <ul className="flex flex-col gap-2">
+                    {relevantGroups.map((group) => {
+                      const localStop = group.stops.find((n) => n.floorId === selectedFloorId);
+                      const otherStops = group.stops.filter((n) => n.floorId !== selectedFloorId);
+
+                      return (
+                        <li key={group.id} className="text-xs border-l-2 border-black pl-2">
+                          <span className="font-medium">{group.name}</span>{" "}
+                          <span className="text-gray-400">({group.type})</span>
+                          {otherStops.length === 0 ? (
+                            <p className="text-gray-500">No other stops yet.</p>
+                          ) : (
+                            otherStops.map((stop) => {
+                              const stopFloor = floors.find((f) => f.id === stop.floorId);
+                              return (
+                                <p key={stop.id}>
+                                  {localStop ? nodeName(localStop) : "?"} → {nodeName(stop)}
+                                  {stopFloor ? ` (${stopFloor.name})` : ""}
+                                </p>
+                              );
+                            })
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                );
+              })()}
             </div>
           </>
         )}

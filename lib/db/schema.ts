@@ -2,6 +2,7 @@ import { pgTable, uuid, varchar, integer, real, timestamp, pgEnum } from "drizzl
 import { relations } from "drizzle-orm";
 
 export const nodeTypeEnum = pgEnum("node_type", ["room", "kiosk", "waypoint"]);
+export const teleporterTypeEnum = pgEnum("teleporter_type", ["staircase", "elevator", "others"]);
 
 export const floorsTable = pgTable("floors", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -10,6 +11,17 @@ export const floorsTable = pgTable("floors", {
   mapData: varchar("map_data", { length: 2048 }),
   width: integer("width").notNull(),
   height: integer("height").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// A named vertical route: "Elevator A", "Staircase (East Wing)", etc.
+// This table doesn't store *which* nodes belong to it — that's on
+// nodesTable, so a node can look up its own group with a plain FK,
+// and you never need a join table for "membership."
+export const teleporterGroupsTable = pgTable("teleporter_groups", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(), // "Elevator A"
+  type: teleporterTypeEnum("type").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -22,6 +34,7 @@ export const nodesTable = pgTable("nodes", {
     .references(() => floorsTable.id, { onDelete: "cascade" }),
   px: real("px").notNull(),
   py: real("py").notNull(),
+  teleporterGroupId: uuid("teleporter_group_id").references(() => teleporterGroupsTable.id, { onDelete: "set null" })
 });
 
 // rooms: its own real table, just keyed off the shared node id
@@ -71,6 +84,10 @@ export const nodesRelations = relations(nodesTable, ({ one, many }) => ({
     fields: [nodesTable.id],
     references: [kiosksTable.id],
   }),
+  teleporterGroup: one(teleporterGroupsTable, {
+    fields: [nodesTable.teleporterGroupId], // Match the teleporter id itself
+    references: [teleporterGroupsTable.id],
+  }),
   outgoingEdges: many(edgesTable, { relationName: "from" }),
   incomingEdges: many(edgesTable, { relationName: "to" }),
 }));
@@ -101,4 +118,8 @@ export const edgesRelations = relations(edgesTable, ({ one }) => ({
     relationName: "to",
   }),
 }));
+
+export const teleporterGroupRelations = relations(teleporterGroupsTable, ({many}) => ({
+  stops: many(nodesTable),
+}))
 

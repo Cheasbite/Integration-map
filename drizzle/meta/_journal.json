@@ -15,6 +15,13 @@
       "when": 1784686478848,
       "tag": "0001_boring_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784705375275,
+      "tag": "0002_violet_firebrand",
+      "breakpoints": true
     }
   ]
 }
